@@ -2,11 +2,6 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import time
-import google.generativeai as genai # 🌟 구글 Gemini 라이브러리로 변경
-
-# 🌟 여기에 발급받은 구글 Gemini API 키를 붙여넣으세요! (AIza... 로 시작)
-genai.configure(api_key="AQ.Ab8RN6KKahZGfO1WCrhNVt0d6ZAJIB9oVTHlarw2l7IdxysM5w")
-model = genai.GenerativeModel('gemini-1.5-flash')
 
 yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y.%m.%d")
 print(f"--- 🎯 타겟 날짜(어제): {yesterday} ---")
@@ -23,10 +18,10 @@ seen_links = set()
 count = 0
 news_data = []
 
-print("🔍 기사 수집 및 AI 요약을 시작합니다...\n")
+print("🔍 기사 수집을 시작합니다...\n")
 
 for tag in article_tags:
-    if count >= 5: 
+    if count >= 5:  # 어제 기사를 5개 찾으면 멈춥니다.
         break
         
     title = tag.text.strip()
@@ -59,28 +54,15 @@ for tag in article_tags:
                     article_date = li.text.replace("승인", "").strip()[:10]
                     break
         
+        # 🌟 핵심 수정 포인트: 어제 날짜가 아니면 바구니에 담지 않고 넘어갑니다!
         if article_date != yesterday:
+            print(f"⏩ 패스 (날짜 불일치, 발행일: {article_date}) - {title}")
             continue
             
-        # 본문 가져오기
-        content_div = article_soup.select_one("#article-view-content-div")
-        content = content_div.text.strip().replace("\n", " ")[:1500] if content_div else ""
+        print(f"✅ 수집 완료: {title}")
         
-        # 🌟 완전 무료! Gemini 3줄 요약 실행
-        print(f"🤖 Gemini가 '{title}' 요약 중...")
-        try:
-            if content:
-                prompt = f"다음 뉴스 기사를 정확히 3줄로 요약해 줘. 각 줄은 불릿 포인트(-)로 시작해:\n\n{content}"
-                ai_response = model.generate_content(prompt)
-                summary = ai_response.text.strip()
-                # HTML 줄바꿈 태그로 변환
-                summary = summary.replace('\n', '<br>')
-            else:
-                summary = "본문을 불러올 수 없어 요약하지 못했습니다."
-        except Exception as ai_e:
-            summary = f"요약 중 오류 발생: {ai_e}"
-            print(f"🚫 [요약 실패] {ai_e}")
-            
+        summary = "AI 3줄 요약 기능은 현재 충전 대기 중입니다. 원문 링크를 클릭해 기사를 확인해 주세요! 🚀"
+        
         news_data.append({
             "title": title,
             "link": link,
@@ -89,7 +71,7 @@ for tag in article_tags:
         })
         
         count += 1
-        time.sleep(2) # 무료 API 보호를 위해 2초씩 대기
+        time.sleep(1) 
         
     except Exception as e:
         print(f"❌ 기사 크롤링 중 오류 발생: {e}")
