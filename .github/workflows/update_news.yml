@@ -24,7 +24,7 @@ jobs:
       - name: 필요한 도구 상자(라이브러리) 설치하기
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 openai
+          pip install requests beautifulsoup4 google-generativeai
 
       - name: 파이썬 코드 실행하기 (크롤링 & HTML 생성)
         run: python main.py
