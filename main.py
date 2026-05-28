@@ -186,7 +186,7 @@ html_content = f"""
     <h1>📋 오늘의 종합 뉴스 브리핑</h1>
     <div class="date-title">최근 자동 업데이트: {yesterday}</div>
 
-    <div class="section-title">🌱 오늘의 임팩트 비즈니스 뉴스 (국내)</div>
+    <div class="section-title">🌱 오늘의 임팩트 비즈니스 뉴스</div>
 """
 
 if not impact_news_data:
