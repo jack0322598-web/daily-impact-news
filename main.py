@@ -17,7 +17,7 @@ macro_news_data = []
 seen_links = set()
 
 # ==========================================
-# 1. 임팩트온 스크랩 섹션
+# 1. 임팩트온 스크랩 섹션 (기존 성공 코드)
 # ==========================================
 print("\n🌱 1. 임팩트온 뉴스 스크랩 시작...")
 try:
@@ -33,7 +33,6 @@ try:
         title = tag.text.strip()
         if not title or len(title) < 4: continue
         
-        # 주소 안전하게 결합하기
         href = tag.get("href", "")
         if not href: continue
         link = href if href.startswith("http") else "https://www.impacton.net" + href
@@ -73,7 +72,7 @@ except Exception as e:
 
 
 # ==========================================
-# 2. 구글 뉴스 거시경제 키워드 스크랩 섹션
+# 2. 구글 뉴스 거시경제 스크랩 섹션 (🌟 무적 RSS 방식으로 전면 수정)
 # ==========================================
 print("\n🎯 2. 거시경제 구글 뉴스 스크랩 시작...")
 keywords = ["미국 관세", "글로벌 외교", "금리 인상"]
@@ -82,46 +81,41 @@ for keyword in keywords:
     print(f"🔍 키워드 [{keyword}] 검색 중...")
     try:
         encoded_keyword = urllib.parse.quote(keyword)
-        google_url = f"https://news.google.com/search?q={encoded_keyword}%20when%3A1d&hl=ko&gl=KR&ceid=KR%3Ako"
+        # 🌟 구글 뉴스 RSS 피드 주소를 사용하여 보안망과 태그 변경 문제를 원천 봉쇄합니다.
+        google_rss_url = f"https://news.google.com/rss/search?q={encoded_keyword}%20when%3A1d&hl=ko&gl=KR&ceid=KR%3Ako"
         
-        response = requests.get(google_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        articles = soup.select("article")
+        response = requests.get(google_rss_url, headers=headers, timeout=10)
+        # XML 구조이므로 xml 또는 html.parser로 파싱합니다.
+        soup = BeautifulSoup(response.text, 'xml')
+        
+        # RSS 방식에서는 기사 하나하나가 <item> 태그 안에 들어가 있습니다.
+        items = soup.select("item")
         
         count = 0
-        for article in articles:
-            if count >= 3:
+        for item in items:
+            if count >= 3: # 키워드당 3개씩만
                 break
-            title_tag = article.select_one("h4, a[url], a[href*='./articles']")
-            if not title_tag: title_tag = article.find("a")
-            if not title_tag: continue
-            
-            title = title_tag.text.strip()
-            if not title or len(title) < 4: continue
-            
-            # 🌟 구글 뉴스 주소 결합 버그 완벽 방어
-            href = title_tag.get("href", "")
-            if not href: continue
-            if href.startswith("."):
-                link = "https://news.google.com" + href[1:]
-            elif href.startswith("/"):
-                link = "https://news.google.com" + href
-            else:
-                link = href
                 
+            title = item.title.text.strip() if item.title else ""
+            link = item.link.text.strip() if item.link else ""
+            publisher = item.source.text.strip() if item.source else "언론사"
+            
+            # 제목에서 뒤에 붙는 ' - 언론사명' 제거해서 깔끔하게 만들기
+            if " - " in title:
+                title = title.rsplit(" - ", 1)[0]
+                
+            if not title or not link: continue
             if link in seen_links: continue
             seen_links.add(link)
             
-            publisher_tag = article.select_one("div[class*='b0wA9c'] img, .vr7Nbe, [data-g-attribution]")
-            publisher = publisher_tag.text.strip() if publisher_tag else "언론사"
-            
-            print(f"✅ 구글 뉴스 수집 완료: [{publisher}] {title}")
+            print(f"✅ 구글 뉴스(RSS) 수집 완료: [{publisher}] {title}")
             macro_news_data.append({
                 "title": f"[{keyword}] {title}",
                 "link": link,
                 "date": f"{yesterday} ({publisher})"
             })
             count += 1
+            
     except Exception as e:
         print(f"⏩ 구글 뉴스 키워드 [{keyword}] 건너뜀 (오류): {e}")
 
