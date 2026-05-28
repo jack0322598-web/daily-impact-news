@@ -10,7 +10,7 @@ target_dt = datetime.now() - timedelta(days=1)
 yesterday_dot = target_dt.strftime("%Y.%m.%d")
 yesterday_dash = target_dt.strftime("%Y-%m-%d")
 
-# 블룸버그/USTR 등 영문 날짜 포맷 대응 (예: May 27 또는 27 May)
+# 블룸버그/USTR 등 영문 날짜 포맷 대응 (예: May 27)
 month_map = {
     1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
     7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
@@ -82,10 +82,27 @@ except Exception as e:
 
 
 # ==========================================
-# 2. 🎯 미국 거시경제 스크랩 섹션 (공식 RSS/XML 돌파 방식)
+# 2. 🎯 미국 거시경제 스크랩 섹션 (오타 수정 및 기본 파서 강제)
 # ==========================================
 print("\n🎯 2. 미국 거시경제 카테고리별 스크랩 시작...")
 
-# --- 2-A. USTR (미국 무역대표부) 공식 뉴스 피드 ---
+# --- 2-A. USTR (미국 무역대표부) ---
 print("🔍 USTR 보도자료 분석 중...")
-try
+try:
+    ustr_url = "https://ustr.gov/about-us/policy-offices/press-office/press-releases"
+    res = requests.get(ustr_url, headers=headers, timeout=15)
+    soup = BeautifulSoup(res.text, 'html.parser')
+    items = soup.select(".views-row")
+    
+    for item in items:
+        title_tag = item.select_one("a")
+        date_tag = item.select_one(".date-display-single, .post-date, .views-field-created")
+        if not title_tag: continue
+        
+        title_en = title_tag.text.strip()
+        link = "https://ustr.gov" + title_tag["href"] if not title_tag["href"].startswith("http") else title_tag["href"]
+        
+        # 🌟 오타 수정 완료: 기존의 잘못된 date_meta를 지우고 date_tag를 정확히 검사합니다.
+        item_date_text = date_tag.text.strip() if date_tag else ""
+        if item_date_text and (yesterday_en_short not in item_date_text and yesterday_dash not in item_date_text):
+            continue
