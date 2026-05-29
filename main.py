@@ -1,20 +1,25 @@
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+import urllib.parse
 import time
 
-# 타겟 날짜 설정 (어제 날짜)
-yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y.%m.%d")
-yesterday_dash = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-print(f"--- 🎯 타겟 날짜(어제): {yesterday} ---")
+# ==========================================
+# 📅 기준 날짜 설정 (🌟 무조건 한국 시간 기준 🌟)
+# ==========================================
+KST = timezone(timedelta(hours=9))
+now_kst = datetime.now(KST)
+yesterday_dt = now_kst - timedelta(days=1)
+yesterday_dot = yesterday_dt.strftime("%Y.%m.%d")
+
+print(f"--- 🎯 타겟 날짜(어제, 한국시간 기준): {yesterday_dot} ---")
 
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
 impact_news_data = []
-# 카테고리별로 뉴스를 담을 저장소
 macro_categories = {
     "경제지표": [],
     "통화정책": [],
@@ -24,7 +29,7 @@ macro_categories = {
 seen_links = set()
 
 # ==========================================
-# 1. 🌱 임팩트온 스크랩 섹션 (기존 성공 코드)
+# 1. 🌱 임팩트온 스크랩 섹션 
 # ==========================================
 print("\n🌱 1. 임팩트온 뉴스 스크랩 시작...")
 try:
@@ -43,7 +48,6 @@ try:
         if not href: continue
         link = href if href.startswith("http") else "https://www.impacton.net" + href
         if link in seen_links: continue
-        seen_links.add(link)
         if "pro" in title.lower() or "유료" in title: continue
         
         try:
@@ -61,103 +65,86 @@ try:
                         article_date = li.text.replace("승인", "").strip()[:10]
                         break
             
-            if article_date == yesterday:
-                print(f"✅ 임팩트온 수집 완료: {title}")
+            # 🌟 어제 날짜 기사만 쏙쏙!
+            if article_date == yesterday_dot:
+                seen_links.add(link)
+                print(f"✅ 임팩트온 수집: {title}")
                 impact_news_data.append({"title": title, "link": link, "date": f"{article_date}"})
                 count += 1
             time.sleep(0.5)
-        except Exception as e:
+        except Exception:
             pass
 except Exception as e:
-    print(f"❌ 임팩트온 메인 페이지 접속 실패: {e}")
+    print(f"⚠️ 임팩트온 에러: {e}")
 
 
 # ==========================================
-# 2. 🎯 미국 거시경제 직집 스크랩 섹션 (블룸버그 & USTR)
+# 2. 🎯 구글 뉴스 4대 카테고리 스크랩 (전체 대상)
 # ==========================================
-print("\n🎯 2. 미국 거시경제 카테고리별 스크랩 시작...")
+print("\n🎯 2. 구글 뉴스 미국 거시경제 카테고리 스크랩 시작...")
 
-# --- 2-A. USTR (미국 무역대표부) 관세/무역외교 집중 스크랩 ---
-print("🔍 USTR 보도자료 분석 중...")
-try:
-    ustr_url = "https://ustr.gov/about-us/policy-offices/press-office/press-releases"
-    res = requests.get(ustr_url, headers=headers, timeout=15)
-    soup = BeautifulSoup(res.text, 'html.parser')
-    
-    # USTR의 보도자료 목록 태그 피드 분석
-    items = soup.select(".views-row")
-    for item in items:
-        title_tag = item.select_one("a")
-        date_tag = item.select_one(".date-display-single, .post-date")
-        
-        if not title_tag: continue
-        title_en = title_tag.text.strip()
-        link = "https://ustr.gov" + title_tag["href"] if not title_tag["href"].startswith("http") else title_tag["href"]
-        
-        # 키워드 매칭을 통해 카테고리 분류 및 수집
-        title_lower = title_en.lower()
-        category_assigned = None
-        
-        if "tariff" in title_lower or "customs" in title_lower or "tax" in title_lower:
-            category_assigned = "관세"
-        elif "agreement" in title_lower or "china" in title_lower or "bilateral" in title_lower:
-            category_assigned = "외교"
-            
-        if category_assigned and len(macro_categories[category_assigned]) < 2:
-            if link not in seen_links:
-                seen_links.add(link)
-                print(f"✅ USTR 수집 [{category_assigned}]: {title_en[:50]}...")
-                macro_categories[category_assigned].append({
-                    "title": f"[USTR] {title_en}",
-                    "link": link,
-                    "source": "USTR"
-                })
-except Exception as e:
-    print(f"⚠️ USTR 크롤링 중 일시적 이슈 발생 (건너뜀)")
+# 카테고리별 검색 키워드 (구글 뉴스에서 정확한 결과를 얻기 위해 단어 조합)
+search_queries = {
+    "경제지표": "미국 (경제지표 OR GDP OR 고용 OR 물가)",
+    "통화정책": "미국 (통화정책 OR 연준 OR 금리 OR 파월)",
+    "관세": "미국 (관세 OR 무역대표부 OR USTR)",
+    "외교": "미국 (외교 OR 동맹 OR 제재 OR 바이든 OR 트럼프)"
+}
 
-# --- 2-B. 블룸버그 Politics 기반 경제지표/통화정책/외교 스크랩 ---
-print("🔍 블룸버그 경제/정치 피드 분석 중...")
-try:
-    # 블룸버그 정치/정책 데이터 통로 (대안 RSS 및 오픈 피드 활용으로 차단 우회)
-    bb_url = "https://www.bloomberg.com/politics"
-    res = requests.get(bb_url, headers=headers, timeout=15)
-    soup = BeautifulSoup(res.text, 'html.parser')
-    
-    # 일반적인 블룸버그 뉴스 카드 주소 구조 분석
-    story_tags = soup.find_all("a", href=True)
-    for tag in story_tags:
-        href = tag["href"]
-        title_text = tag.text.strip()
+for cat_name, query in search_queries.items():
+    print(f"🔍 [{cat_name}] 검색 중... (키워드: {query})")
+    try:
+        encoded_query = urllib.parse.quote(query)
+        # 구글 뉴스 RSS 활용 (차단 우회 및 전 세계 뉴스 통합 검색)
+        rss_url = f"https://news.google.com/rss/search?q={encoded_query}%20when%3A1d&hl=ko&gl=KR&ceid=KR%3Ako"
         
-        if "/news/articles/" not in href or len(title_text) < 15: continue
-        link = href if href.startswith("http") else "https://www.bloomberg.com" + href
-        if link in seen_links: continue
+        res = requests.get(rss_url, headers=headers, timeout=15)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        items = soup.find_all("item")
         
-        title_lower = title_text.lower()
-        category_assigned = None
-        
-        # 카테고리 판단 기준 단어 정의
-        if "fed " in title_lower or "rate" in title_lower or "powell" in title_lower or "inflation" in title_lower:
-            category_assigned = "통화정책"
-        elif "gdp" in title_lower or "job" in title_lower or "economy" in title_lower or "data" in title_lower:
-            category_assigned = "경제지표"
-        elif "sanction" in title_lower or "china" in title_lower or "biden" in title_lower or "trump" in title_lower:
-            category_assigned = "외교"
+        for item in items:
+            if len(macro_categories[cat_name]) >= 2: # 카테고리당 2개씩 수집
+                break
+                
+            title_text = item.title.text.strip() if item.title else ""
+            link = item.link.text.strip() if item.link else ""
+            pub_date_str = item.pubdate.text.strip() if item.pubdate else ""
             
-        if category_assigned and len(macro_categories[category_assigned]) < 2:
+            if not title_text or not link or link in seen_links: continue
+            
+            # 🌟 구글 뉴스 날짜를 한국 시간으로 변환하여 엄격하게 어제 날짜인지 검사
+            try:
+                # pubDate (예: Wed, 28 May 2026 12:00:00 GMT)를 KST로 변환
+                pub_dt = parsedate_to_datetime(pub_date_str).astimezone(KST)
+                pub_date_dot = pub_dt.strftime("%Y.%m.%d")
+                
+                # 어제 날짜가 아니면 가차 없이 패스!
+                if pub_date_dot != yesterday_dot:
+                    continue
+            except Exception:
+                continue
+                
+            # 뒤에 붙는 ' - 언론사명' 분리
+            publisher = "구글 뉴스"
+            if " - " in title_text:
+                parts = title_text.rsplit(" - ", 1)
+                title_text = parts[0]
+                publisher = parts[1]
+
             seen_links.add(link)
-            print(f"✅ 블룸버그 수집 [{category_assigned}]: {title_text[:50]}...")
-            macro_categories[category_assigned].append({
-                "title": f"[Bloomberg] {title_text}",
+            print(f"✅ [{cat_name}] 수집: [{publisher}] {title_text[:30]}...")
+            macro_categories[cat_name].append({
+                "title": title_text,
                 "link": link,
-                "source": "Bloomberg"
+                "source": publisher
             })
-except Exception as e:
-    print(f"⚠️ 블룸버그 크롤링 중 일시적 이슈 발생 (건너뜀)")
+            
+    except Exception as e:
+        print(f"⚠️ [{cat_name}] 스크랩 에러: {e}")
 
 
 # ==========================================
-# 3. 🌐 통합 웹페이지(HTML) 생성 섹션
+# 3. 🌐 통합 웹페이지(HTML) 생성
 # ==========================================
 print("\n--- 🌐 통합 웹페이지(HTML) 생성 시작 ---")
 
@@ -166,7 +153,7 @@ html_content = f"""
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>📰 오늘의 종합 비즈니스 & 미국 거시경제 브리핑</title>
+    <title>📰 오늘의 종합 비즈니스 & 거시경제 브리핑</title>
     <style>
         body {{ font-family: 'Malgun Gothic', sans-serif; max-width: 900px; margin: auto; padding: 20px; background-color: #f4f7f6; }}
         h1 {{ color: #2c3e50; text-align: center; margin-bottom: 5px; }}
@@ -184,13 +171,13 @@ html_content = f"""
 </head>
 <body>
     <h1>📋 오늘의 종합 뉴스 브리핑</h1>
-    <div class="date-title">최근 자동 업데이트: {yesterday}</div>
+    <div class="date-title">자동 업데이트 기준일: {yesterday_dot} (전일 기사)</div>
 
-    <div class="section-title">🌱 오늘의 임팩트 비즈니스 뉴스</div>
+    <div class="section-title">🌱 오늘의 임팩트 비즈니스 뉴스 (국내)</div>
 """
 
 if not impact_news_data:
-    html_content += "<div class='no-news'>어제자 발행된 임팩트 뉴스가 없습니다.</div>"
+    html_content += f"<div class='no-news'>{yesterday_dot} 자에 발행된 임팩트온 뉴스가 없습니다.</div>"
 else:
     for news in impact_news_data:
         html_content += f"""
@@ -204,17 +191,16 @@ html_content += """
     <div class="section-title macro">🇺🇸 오늘의 미국 거시경제 브리핑 (글로벌)</div>
 """
 
-# 4대 카테고리를 순서대로 HTML에 출력합니다.
 for cat_name, news_list in macro_categories.items():
     html_content += f"<div class='sub-category'>📌 {cat_name}</div>"
     if not news_list:
-        html_content += "<div class='no-news'>최신 관련 뉴스가 없습니다. (대기 중)</div>"
+        html_content += f"<div class='no-news'>{yesterday_dot} 자 뉴스가 없습니다.</div>"
     else:
         for news in news_list:
             html_content += f"""
             <div class="news-card">
                 <div class="news-title"><a href="{news['link']}" target="_blank">{news['title']}</a></div>
-                <div class="news-date">출처: {news['source']} (원문 인덱싱)</div>
+                <div class="news-date">출처: {news['source']}</div>
             </div>
             """
         
@@ -223,4 +209,4 @@ html_content += "</body></html>"
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
-print("🎉 통합 카테고리 index.html 파일이 성공적으로 생성되었습니다!")
+print("🎉 모든 조건 충족! 통합 index.html 파일 생성이 끝났습니다.")
