@@ -65,7 +65,6 @@ try:
                         article_date = li.text.replace("승인", "").strip()[:10]
                         break
             
-            # 🌟 어제 날짜 기사만 쏙쏙!
             if article_date == yesterday_dot:
                 seen_links.add(link)
                 print(f"✅ 임팩트온 수집: {title}")
@@ -83,27 +82,27 @@ except Exception as e:
 # ==========================================
 print("\n🎯 2. 구글 뉴스 미국 거시경제 카테고리 스크랩 시작...")
 
-# 카테고리별 검색 키워드 (구글 뉴스에서 정확한 결과를 얻기 위해 단어 조합)
+# 🌟 RSS가 더 잘 알아듣도록 키워드 조합을 직관적으로 풀었습니다.
 search_queries = {
-    "경제지표": "미국 (경제지표 OR GDP OR 고용 OR 물가)",
-    "통화정책": "미국 (통화정책 OR 연준 OR 금리 OR 파월)",
-    "관세": "미국 (관세 OR 무역대표부 OR USTR)",
-    "외교": "미국 (외교 OR 동맹 OR 제재 OR 바이든 OR 트럼프)"
+    "경제지표": "미국 경제지표 OR 미국 GDP OR 미국 고용 OR 미국 물가",
+    "통화정책": "미국 통화정책 OR 미국 연준 OR 미국 금리 OR 파월",
+    "관세": "미국 관세 OR 미국 무역대표부 OR USTR",
+    "외교": "미국 외교 OR 미국 제재 OR 바이든 OR 트럼프"
 }
 
 for cat_name, query in search_queries.items():
-    print(f"🔍 [{cat_name}] 검색 중... (키워드: {query})")
+    print(f"🔍 [{cat_name}] 검색 중...")
     try:
         encoded_query = urllib.parse.quote(query)
-        # 구글 뉴스 RSS 활용 (차단 우회 및 전 세계 뉴스 통합 검색)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_query}%20when%3A1d&hl=ko&gl=KR&ceid=KR%3Ako"
+        # 🌟 핵심 수정: when:1d -> when:2d 로 변경하여 누락되는 어제 기사가 없게 투망을 넓혔습니다.
+        rss_url = f"https://news.google.com/rss/search?q={encoded_query}%20when%3A2d&hl=ko&gl=KR&ceid=KR%3Ako"
         
         res = requests.get(rss_url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         items = soup.find_all("item")
         
         for item in items:
-            if len(macro_categories[cat_name]) >= 2: # 카테고리당 2개씩 수집
+            if len(macro_categories[cat_name]) >= 2: 
                 break
                 
             title_text = item.title.text.strip() if item.title else ""
@@ -112,19 +111,16 @@ for cat_name, query in search_queries.items():
             
             if not title_text or not link or link in seen_links: continue
             
-            # 🌟 구글 뉴스 날짜를 한국 시간으로 변환하여 엄격하게 어제 날짜인지 검사
             try:
-                # pubDate (예: Wed, 28 May 2026 12:00:00 GMT)를 KST로 변환
                 pub_dt = parsedate_to_datetime(pub_date_str).astimezone(KST)
                 pub_date_dot = pub_dt.strftime("%Y.%m.%d")
                 
-                # 어제 날짜가 아니면 가차 없이 패스!
+                # 어제 날짜가 아니면 (오늘이거나 그저께면) 버립니다!
                 if pub_date_dot != yesterday_dot:
                     continue
             except Exception:
                 continue
                 
-            # 뒤에 붙는 ' - 언론사명' 분리
             publisher = "구글 뉴스"
             if " - " in title_text:
                 parts = title_text.rsplit(" - ", 1)
@@ -132,7 +128,7 @@ for cat_name, query in search_queries.items():
                 publisher = parts[1]
 
             seen_links.add(link)
-            print(f"✅ [{cat_name}] 수집: [{publisher}] {title_text[:30]}...")
+            print(f"✅ [{cat_name}] 수집 완료!")
             macro_categories[cat_name].append({
                 "title": title_text,
                 "link": link,
@@ -200,7 +196,7 @@ for cat_name, news_list in macro_categories.items():
             html_content += f"""
             <div class="news-card">
                 <div class="news-title"><a href="{news['link']}" target="_blank">{news['title']}</a></div>
-                <div class="news-date">출처: {news['source']}</div>
+                <div class="news-date">출처: {news['source']} (발행: {yesterday_dot})</div>
             </div>
             """
         
@@ -209,4 +205,4 @@ html_content += "</body></html>"
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
-print("🎉 모든 조건 충족! 통합 index.html 파일 생성이 끝났습니다.")
+print("🎉 시간 오류 해결! 통합 index.html 파일 생성이 끝났습니다.")
